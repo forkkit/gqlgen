@@ -44,7 +44,6 @@ type Stub struct {
 		Recursive              func(ctx context.Context, input *RecursiveInputSlice) (*bool, error)
 		NestedInputs           func(ctx context.Context, input [][]*OuterInput) (*bool, error)
 		NestedOutputs          func(ctx context.Context) ([][]*OuterObject, error)
-		Shapes                 func(ctx context.Context) ([]Shape, error)
 		ModelMethods           func(ctx context.Context) (*ModelMethods, error)
 		User                   func(ctx context.Context, id int) (*User, error)
 		NullableArg            func(ctx context.Context, arg *int) (*string, error)
@@ -61,6 +60,8 @@ type Stub struct {
 		DirectiveObject        func(ctx context.Context) (*ObjectDirectives, error)
 		DirectiveFieldDef      func(ctx context.Context, ret string) (string, error)
 		DirectiveField         func(ctx context.Context) (*string, error)
+		Shapes                 func(ctx context.Context) ([]Shape, error)
+		NoShape                func(ctx context.Context) (Shape, error)
 		MapStringInterface     func(ctx context.Context, in map[string]interface{}) (map[string]interface{}, error)
 		ErrorBubble            func(ctx context.Context) (*Error, error)
 		Errors                 func(ctx context.Context) (*Errors, error)
@@ -197,9 +198,6 @@ func (r *stubQuery) NestedInputs(ctx context.Context, input [][]*OuterInput) (*b
 func (r *stubQuery) NestedOutputs(ctx context.Context) ([][]*OuterObject, error) {
 	return r.QueryResolver.NestedOutputs(ctx)
 }
-func (r *stubQuery) Shapes(ctx context.Context) ([]Shape, error) {
-	return r.QueryResolver.Shapes(ctx)
-}
 func (r *stubQuery) ModelMethods(ctx context.Context) (*ModelMethods, error) {
 	return r.QueryResolver.ModelMethods(ctx)
 }
@@ -247,6 +245,12 @@ func (r *stubQuery) DirectiveFieldDef(ctx context.Context, ret string) (string, 
 }
 func (r *stubQuery) DirectiveField(ctx context.Context) (*string, error) {
 	return r.QueryResolver.DirectiveField(ctx)
+}
+func (r *stubQuery) Shapes(ctx context.Context) ([]Shape, error) {
+	return r.QueryResolver.Shapes(ctx)
+}
+func (r *stubQuery) NoShape(ctx context.Context) (Shape, error) {
+	return r.QueryResolver.NoShape(ctx)
 }
 func (r *stubQuery) MapStringInterface(ctx context.Context, in map[string]interface{}) (map[string]interface{}, error) {
 	return r.QueryResolver.MapStringInterface(ctx, in)

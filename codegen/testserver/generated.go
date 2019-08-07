@@ -58,6 +58,8 @@ type DirectiveRoot struct {
 
 	Logged func(ctx context.Context, obj interface{}, next graphql.Resolver, id string) (res interface{}, err error)
 
+	MakeNil func(ctx context.Context, obj interface{}, next graphql.Resolver) (res interface{}, err error)
+
 	Range func(ctx context.Context, obj interface{}, next graphql.Resolver, min *int, max *int) (res interface{}, err error)
 
 	ToNull func(ctx context.Context, obj interface{}, next graphql.Resolver) (res interface{}, err error)
@@ -219,6 +221,7 @@ type ComplexityRoot struct {
 		ModelMethods           func(childComplexity int) int
 		NestedInputs           func(childComplexity int, input [][]*OuterInput) int
 		NestedOutputs          func(childComplexity int) int
+		NoShape                func(childComplexity int) int
 		NullableArg            func(childComplexity int, arg *int) int
 		OptionalUnion          func(childComplexity int) int
 		Overlapping            func(childComplexity int) int
@@ -326,7 +329,6 @@ type QueryResolver interface {
 	Recursive(ctx context.Context, input *RecursiveInputSlice) (*bool, error)
 	NestedInputs(ctx context.Context, input [][]*OuterInput) (*bool, error)
 	NestedOutputs(ctx context.Context) ([][]*OuterObject, error)
-	Shapes(ctx context.Context) ([]Shape, error)
 	ModelMethods(ctx context.Context) (*ModelMethods, error)
 	User(ctx context.Context, id int) (*User, error)
 	NullableArg(ctx context.Context, arg *int) (*string, error)
@@ -343,6 +345,8 @@ type QueryResolver interface {
 	DirectiveObject(ctx context.Context) (*ObjectDirectives, error)
 	DirectiveFieldDef(ctx context.Context, ret string) (string, error)
 	DirectiveField(ctx context.Context) (*string, error)
+	Shapes(ctx context.Context) ([]Shape, error)
+	NoShape(ctx context.Context) (Shape, error)
 	MapStringInterface(ctx context.Context, in map[string]interface{}) (map[string]interface{}, error)
 	ErrorBubble(ctx context.Context) (*Error, error)
 	Errors(ctx context.Context) (*Errors, error)
@@ -963,6 +967,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.NestedOutputs(childComplexity), true
 
+	case "Query.noShape":
+		if e.complexity.Query.NoShape == nil {
+			break
+		}
+
+		return e.complexity.Query.NoShape(childComplexity), true
+
 	case "Query.nullableArg":
 		if e.complexity.Query.NullableArg == nil {
 			break
@@ -1387,6 +1398,27 @@ type ObjectDirectives {
     nullableText: String @toNull
 }
 `},
+	&ast.Source{Name: "interfaces.graphql", Input: `extend type Query {
+    shapes: [Shape]
+    noShape: Shape @makeNil
+}
+
+interface Shape {
+    area: Float
+}
+type Circle implements Shape {
+    radius: Float
+    area: Float
+}
+type Rectangle implements Shape {
+    length: Float
+    width: Float
+    area: Float
+}
+union ShapeUnion = Circle | Rectangle
+
+directive @makeNil on FIELD_DEFINITION
+`},
 	&ast.Source{Name: "loops.graphql", Input: `type LoopA {
     b: LoopB!
 }
@@ -1477,7 +1509,6 @@ type EmbeddedDefaultScalar {
     recursive(input: RecursiveInputSlice): Boolean
     nestedInputs(input: [[OuterInput]] = [[{inner: {id: 1}}]]): Boolean
     nestedOutputs: [[OuterObject]]
-    shapes: [Shape]
     modelMethods: ModelMethods
     user(id: Int!): User!
     nullableArg(arg: Int = 123): String
@@ -1548,20 +1579,6 @@ type OuterObject {
 type InnerObject {
     id: Int!
 }
-
-interface Shape {
-    area: Float
-}
-type Circle implements Shape {
-    radius: Float
-    area: Float
-}
-type Rectangle implements Shape {
-    length: Float
-    width: Float
-    area: Float
-}
-union ShapeUnion = Circle | Rectangle
 
 type ForcedResolver {
     field: Circle
@@ -4464,37 +4481,6 @@ func (ec *executionContext) _Query_nestedOutputs(ctx context.Context, field grap
 	return ec.marshalOOuterObject2ᚕᚕᚖgithubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐOuterObject(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Query_shapes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-		ec.Tracer.EndFieldExecution(ctx)
-	}()
-	rctx := &graphql.ResolverContext{
-		Object:   "Query",
-		Field:    field,
-		Args:     nil,
-		IsMethod: true,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec._fieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Shapes(rctx)
-	})
-
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.([]Shape)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOShape2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐShape(ctx, field.Selections, res)
-}
-
 func (ec *executionContext) _Query_modelMethods(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() {
@@ -5088,6 +5074,83 @@ func (ec *executionContext) _Query_directiveField(ctx context.Context, field gra
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_shapes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Query",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec._fieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Shapes(rctx)
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]Shape)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOShape2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐShape(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_noShape(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+		ec.Tracer.EndFieldExecution(ctx)
+	}()
+	rctx := &graphql.ResolverContext{
+		Object:   "Query",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec._fieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		directive0 := func(rctx context.Context) (interface{}, error) {
+			ctx = rctx // use context from middleware stack in children
+			return ec.resolvers.Query().NoShape(rctx)
+		}
+		directive1 := func(ctx context.Context) (interface{}, error) {
+			return ec.directives.MakeNil(ctx, nil, directive0)
+		}
+		tmp, err := directive1(rctx)
+		if err != nil {
+			return nil, err
+		}
+		if data, ok := tmp.(Shape); ok {
+			return data, nil
+		} else if tmp == nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf(`unexpected type %T from directive, should be github.com/99designs/gqlgen/codegen/testserver.Shape`, tmp)
+	})
+
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(Shape)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOShape2githubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐShape(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_mapStringInterface(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -7812,8 +7875,8 @@ func (ec *executionContext) unmarshalInputValidInput(ctx context.Context, obj in
 
 // region    ************************** interface.gotpl ***************************
 
-func (ec *executionContext) _Content_Child(ctx context.Context, sel ast.SelectionSet, obj *ContentChild) graphql.Marshaler {
-	switch obj := (*obj).(type) {
+func (ec *executionContext) _Content_Child(ctx context.Context, sel ast.SelectionSet, obj ContentChild) graphql.Marshaler {
+	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
 	case ContentUser:
@@ -7829,8 +7892,8 @@ func (ec *executionContext) _Content_Child(ctx context.Context, sel ast.Selectio
 	}
 }
 
-func (ec *executionContext) _Shape(ctx context.Context, sel ast.SelectionSet, obj *Shape) graphql.Marshaler {
-	switch obj := (*obj).(type) {
+func (ec *executionContext) _Shape(ctx context.Context, sel ast.SelectionSet, obj Shape) graphql.Marshaler {
+	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
 	case *Circle:
@@ -7842,8 +7905,8 @@ func (ec *executionContext) _Shape(ctx context.Context, sel ast.SelectionSet, ob
 	}
 }
 
-func (ec *executionContext) _ShapeUnion(ctx context.Context, sel ast.SelectionSet, obj *ShapeUnion) graphql.Marshaler {
-	switch obj := (*obj).(type) {
+func (ec *executionContext) _ShapeUnion(ctx context.Context, sel ast.SelectionSet, obj ShapeUnion) graphql.Marshaler {
+	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
 	case *Circle:
@@ -7855,8 +7918,8 @@ func (ec *executionContext) _ShapeUnion(ctx context.Context, sel ast.SelectionSe
 	}
 }
 
-func (ec *executionContext) _TestUnion(ctx context.Context, sel ast.SelectionSet, obj *TestUnion) graphql.Marshaler {
-	switch obj := (*obj).(type) {
+func (ec *executionContext) _TestUnion(ctx context.Context, sel ast.SelectionSet, obj TestUnion) graphql.Marshaler {
+	switch obj := (obj).(type) {
 	case nil:
 		return graphql.Null
 	case A:
@@ -8915,17 +8978,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 				res = ec._Query_nestedOutputs(ctx, field)
 				return res
 			})
-		case "shapes":
-			field := field
-			out.Concurrently(i, func() (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_shapes(ctx, field)
-				return res
-			})
 		case "modelMethods":
 			field := field
 			out.Concurrently(i, func() (res graphql.Marshaler) {
@@ -9115,6 +9167,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_directiveField(ctx, field)
+				return res
+			})
+		case "shapes":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_shapes(ctx, field)
+				return res
+			})
+		case "noShape":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_noShape(ctx, field)
 				return res
 			})
 		case "mapStringInterface":
@@ -10213,7 +10287,13 @@ func (ec *executionContext) unmarshalNRecursiveInputSlice2githubᚗcomᚋ99desig
 }
 
 func (ec *executionContext) marshalNShapeUnion2githubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐShapeUnion(ctx context.Context, sel ast.SelectionSet, v ShapeUnion) graphql.Marshaler {
-	return ec._ShapeUnion(ctx, sel, &v)
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._ShapeUnion(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v interface{}) (string, error) {
@@ -11048,7 +11128,10 @@ func (ec *executionContext) unmarshalORecursiveInputSlice2ᚖgithubᚗcomᚋ99de
 }
 
 func (ec *executionContext) marshalOShape2githubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐShape(ctx context.Context, sel ast.SelectionSet, v Shape) graphql.Marshaler {
-	return ec._Shape(ctx, sel, &v)
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Shape(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOShape2ᚕgithubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐShape(ctx context.Context, sel ast.SelectionSet, v []Shape) graphql.Marshaler {
@@ -11190,7 +11273,10 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 }
 
 func (ec *executionContext) marshalOTestUnion2githubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐTestUnion(ctx context.Context, sel ast.SelectionSet, v TestUnion) graphql.Marshaler {
-	return ec._TestUnion(ctx, sel, &v)
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._TestUnion(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOThirdParty2githubᚗcomᚋ99designsᚋgqlgenᚋcodegenᚋtestserverᚐThirdParty(ctx context.Context, v interface{}) (ThirdParty, error) {

@@ -225,9 +225,13 @@ func (t *TypeReference) IsPtr() bool {
 }
 
 func (t *TypeReference) IsNilable() bool {
-	_, isPtr := t.GO.(*types.Pointer)
-	_, isMap := t.GO.(*types.Map)
-	_, isInterface := t.GO.(*types.Interface)
+	goType := t.GO
+	if namedType, isNamed := goType.(*types.Named); isNamed {
+		goType = namedType.Underlying()
+	}
+	_, isPtr := goType.(*types.Pointer)
+	_, isMap := goType.(*types.Map)
+	_, isInterface := goType.(*types.Interface)
 	return isPtr || isMap || isInterface
 }
 
