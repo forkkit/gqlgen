@@ -1,4 +1,4 @@
-daysUntilStale: 60
+daysUntilStale: 90
 daysUntilClose: 7
 staleLabel: stale
 markComment: >
@@ -6,4 +6,5 @@ markComment: >
   recent activity. It will be closed if no further activity occurs. Thank you
   for your contributions.
 exemptLabels:
-  - pinned
+  - accepted
+  - enhancement

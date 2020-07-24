@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
-	"github.com/vektah/gqlparser/gqlerror"
 )
 
 const (
@@ -44,12 +43,18 @@ func (p *Client) Websocket(query string, options ...Option) *Subscription {
 	return p.WebsocketWithPayload(query, nil, options...)
 }
 
+// Grab a single response from a websocket based query
+func (p *Client) WebsocketOnce(query string, resp interface{}, options ...Option) error {
+	sock := p.Websocket(query)
+	defer sock.Close()
+	return sock.Next(&resp)
+}
+
 func (p *Client) WebsocketWithPayload(query string, initPayload map[string]interface{}, options ...Option) *Subscription {
 	r, err := p.newRequest(query, options...)
 	if err != nil {
 		return errorSubscription(fmt.Errorf("request: %s", err.Error()))
 	}
-	r.Header.Set("Host", "99designs.com")
 
 	requestBody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -57,10 +62,8 @@ func (p *Client) WebsocketWithPayload(query string, initPayload map[string]inter
 	}
 
 	srv := httptest.NewServer(p.h)
-	url := strings.Replace(srv.URL, "http://", "ws://", -1)
-	url = strings.Replace(url, "https://", "wss://", -1)
-
-	c, _, err := websocket.DefaultDialer.Dial(url, r.Header)
+	host := strings.Replace(srv.URL, "http://", "ws://", -1)
+	c, _, err := websocket.DefaultDialer.Dial(host+r.URL.Path, r.Header)
 
 	if err != nil {
 		return errorSubscription(fmt.Errorf("dial: %s", err.Error()))
@@ -119,23 +122,19 @@ func (p *Client) WebsocketWithPayload(query string, initPayload map[string]inter
 				}
 			}
 
-			respDataRaw := map[string]interface{}{}
+			var respDataRaw Response
 			err = json.Unmarshal(op.Payload, &respDataRaw)
 			if err != nil {
 				return fmt.Errorf("decode: %s", err.Error())
 			}
 
-			if respDataRaw["errors"] != nil {
-				var errs []*gqlerror.Error
-				if err = unpack(respDataRaw["errors"], &errs); err != nil {
-					return err
-				}
-				if len(errs) > 0 {
-					return fmt.Errorf("errors: %s", errs)
-				}
-			}
+			// we want to unpack even if there is an error, so we can see partial responses
+			unpackErr := unpack(respDataRaw.Data, response)
 
-			return unpack(respDataRaw["data"], response)
+			if respDataRaw.Errors != nil {
+				return RawJsonError{respDataRaw.Errors}
+			}
+			return unpackErr
 		},
 	}
 }

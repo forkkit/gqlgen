@@ -28,10 +28,7 @@ linters:
     - prealloc
     - staticcheck
     - structcheck
-    - stylecheck
-    - typecheck
     - unconvert
-    - unparam
     - unused
     - varcheck
 

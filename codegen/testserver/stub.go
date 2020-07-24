@@ -10,6 +10,9 @@ import (
 )
 
 type Stub struct {
+	BackedByInterfaceResolver struct {
+		ID func(ctx context.Context, obj BackedByInterface) (string, error)
+	}
 	ErrorsResolver struct {
 		A func(ctx context.Context, obj *Errors) (*Error, error)
 		B func(ctx context.Context, obj *Errors) (*Error, error)
@@ -44,11 +47,11 @@ type Stub struct {
 		Recursive                        func(ctx context.Context, input *RecursiveInputSlice) (*bool, error)
 		NestedInputs                     func(ctx context.Context, input [][]*OuterInput) (*bool, error)
 		NestedOutputs                    func(ctx context.Context) ([][]*OuterObject, error)
-		Shapes                           func(ctx context.Context) ([]Shape, error)
 		ModelMethods                     func(ctx context.Context) (*ModelMethods, error)
 		User                             func(ctx context.Context, id int) (*User, error)
 		NullableArg                      func(ctx context.Context, arg *int) (*string, error)
 		InputSlice                       func(ctx context.Context, arg []string) (bool, error)
+		InputNullableSlice               func(ctx context.Context, arg []string) (bool, error)
 		ShapeUnion                       func(ctx context.Context) (ShapeUnion, error)
 		Autobind                         func(ctx context.Context) (*Autobind, error)
 		DeprecatedField                  func(ctx context.Context) (string, error)
@@ -64,7 +67,19 @@ type Stub struct {
 		DirectiveField                   func(ctx context.Context) (*string, error)
 		DirectiveDouble                  func(ctx context.Context) (*string, error)
 		DirectiveUnimplemented           func(ctx context.Context) (*string, error)
+		EmbeddedCase1                    func(ctx context.Context) (*EmbeddedCase1, error)
+		EmbeddedCase2                    func(ctx context.Context) (*EmbeddedCase2, error)
+		EmbeddedCase3                    func(ctx context.Context) (*EmbeddedCase3, error)
+		EnumInInput                      func(ctx context.Context, input *InputWithEnumValue) (EnumTest, error)
+		Shapes                           func(ctx context.Context) ([]Shape, error)
+		NoShape                          func(ctx context.Context) (Shape, error)
+		Node                             func(ctx context.Context) (Node, error)
+		NoShapeTypedNil                  func(ctx context.Context) (Shape, error)
+		Animal                           func(ctx context.Context) (Animal, error)
+		NotAnInterface                   func(ctx context.Context) (BackedByInterface, error)
+		Issue896a                        func(ctx context.Context) ([]*CheckIssue896, error)
 		MapStringInterface               func(ctx context.Context, in map[string]interface{}) (map[string]interface{}, error)
+		MapNestedStringInterface         func(ctx context.Context, in *NestedMapInput) (map[string]interface{}, error)
 		ErrorBubble                      func(ctx context.Context) (*Error, error)
 		Errors                           func(ctx context.Context) (*Errors, error)
 		Valid                            func(ctx context.Context) (string, error)
@@ -79,16 +94,32 @@ type Stub struct {
 		ValidType                        func(ctx context.Context) (*ValidType, error)
 		WrappedStruct                    func(ctx context.Context) (*WrappedStruct, error)
 		WrappedScalar                    func(ctx context.Context) (WrappedScalar, error)
+		WrappedMap                       func(ctx context.Context) (WrappedMap, error)
+		WrappedSlice                     func(ctx context.Context) (WrappedSlice, error)
 	}
 	SubscriptionResolver struct {
-		Updated     func(ctx context.Context) (<-chan string, error)
-		InitPayload func(ctx context.Context) (<-chan string, error)
+		Updated                func(ctx context.Context) (<-chan string, error)
+		InitPayload            func(ctx context.Context) (<-chan string, error)
+		DirectiveArg           func(ctx context.Context, arg string) (<-chan *string, error)
+		DirectiveNullableArg   func(ctx context.Context, arg *int, arg2 *int, arg3 *string) (<-chan *string, error)
+		DirectiveDouble        func(ctx context.Context) (<-chan *string, error)
+		DirectiveUnimplemented func(ctx context.Context) (<-chan *string, error)
+		Issue896b              func(ctx context.Context) (<-chan []*CheckIssue896, error)
 	}
 	UserResolver struct {
 		Friends func(ctx context.Context, obj *User) ([]*User, error)
 	}
+	WrappedMapResolver struct {
+		Get func(ctx context.Context, obj WrappedMap, key string) (string, error)
+	}
+	WrappedSliceResolver struct {
+		Get func(ctx context.Context, obj WrappedSlice, idx int) (string, error)
+	}
 }
 
+func (r *Stub) BackedByInterface() BackedByInterfaceResolver {
+	return &stubBackedByInterface{r}
+}
 func (r *Stub) Errors() ErrorsResolver {
 	return &stubErrors{r}
 }
@@ -118,6 +149,18 @@ func (r *Stub) Subscription() SubscriptionResolver {
 }
 func (r *Stub) User() UserResolver {
 	return &stubUser{r}
+}
+func (r *Stub) WrappedMap() WrappedMapResolver {
+	return &stubWrappedMap{r}
+}
+func (r *Stub) WrappedSlice() WrappedSliceResolver {
+	return &stubWrappedSlice{r}
+}
+
+type stubBackedByInterface struct{ *Stub }
+
+func (r *stubBackedByInterface) ID(ctx context.Context, obj BackedByInterface) (string, error) {
+	return r.BackedByInterfaceResolver.ID(ctx, obj)
 }
 
 type stubErrors struct{ *Stub }
@@ -200,9 +243,6 @@ func (r *stubQuery) NestedInputs(ctx context.Context, input [][]*OuterInput) (*b
 func (r *stubQuery) NestedOutputs(ctx context.Context) ([][]*OuterObject, error) {
 	return r.QueryResolver.NestedOutputs(ctx)
 }
-func (r *stubQuery) Shapes(ctx context.Context) ([]Shape, error) {
-	return r.QueryResolver.Shapes(ctx)
-}
 func (r *stubQuery) ModelMethods(ctx context.Context) (*ModelMethods, error) {
 	return r.QueryResolver.ModelMethods(ctx)
 }
@@ -214,6 +254,9 @@ func (r *stubQuery) NullableArg(ctx context.Context, arg *int) (*string, error) 
 }
 func (r *stubQuery) InputSlice(ctx context.Context, arg []string) (bool, error) {
 	return r.QueryResolver.InputSlice(ctx, arg)
+}
+func (r *stubQuery) InputNullableSlice(ctx context.Context, arg []string) (bool, error) {
+	return r.QueryResolver.InputNullableSlice(ctx, arg)
 }
 func (r *stubQuery) ShapeUnion(ctx context.Context) (ShapeUnion, error) {
 	return r.QueryResolver.ShapeUnion(ctx)
@@ -260,8 +303,44 @@ func (r *stubQuery) DirectiveDouble(ctx context.Context) (*string, error) {
 func (r *stubQuery) DirectiveUnimplemented(ctx context.Context) (*string, error) {
 	return r.QueryResolver.DirectiveUnimplemented(ctx)
 }
+func (r *stubQuery) EmbeddedCase1(ctx context.Context) (*EmbeddedCase1, error) {
+	return r.QueryResolver.EmbeddedCase1(ctx)
+}
+func (r *stubQuery) EmbeddedCase2(ctx context.Context) (*EmbeddedCase2, error) {
+	return r.QueryResolver.EmbeddedCase2(ctx)
+}
+func (r *stubQuery) EmbeddedCase3(ctx context.Context) (*EmbeddedCase3, error) {
+	return r.QueryResolver.EmbeddedCase3(ctx)
+}
+func (r *stubQuery) EnumInInput(ctx context.Context, input *InputWithEnumValue) (EnumTest, error) {
+	return r.QueryResolver.EnumInInput(ctx, input)
+}
+func (r *stubQuery) Shapes(ctx context.Context) ([]Shape, error) {
+	return r.QueryResolver.Shapes(ctx)
+}
+func (r *stubQuery) NoShape(ctx context.Context) (Shape, error) {
+	return r.QueryResolver.NoShape(ctx)
+}
+func (r *stubQuery) Node(ctx context.Context) (Node, error) {
+	return r.QueryResolver.Node(ctx)
+}
+func (r *stubQuery) NoShapeTypedNil(ctx context.Context) (Shape, error) {
+	return r.QueryResolver.NoShapeTypedNil(ctx)
+}
+func (r *stubQuery) Animal(ctx context.Context) (Animal, error) {
+	return r.QueryResolver.Animal(ctx)
+}
+func (r *stubQuery) NotAnInterface(ctx context.Context) (BackedByInterface, error) {
+	return r.QueryResolver.NotAnInterface(ctx)
+}
+func (r *stubQuery) Issue896a(ctx context.Context) ([]*CheckIssue896, error) {
+	return r.QueryResolver.Issue896a(ctx)
+}
 func (r *stubQuery) MapStringInterface(ctx context.Context, in map[string]interface{}) (map[string]interface{}, error) {
 	return r.QueryResolver.MapStringInterface(ctx, in)
+}
+func (r *stubQuery) MapNestedStringInterface(ctx context.Context, in *NestedMapInput) (map[string]interface{}, error) {
+	return r.QueryResolver.MapNestedStringInterface(ctx, in)
 }
 func (r *stubQuery) ErrorBubble(ctx context.Context) (*Error, error) {
 	return r.QueryResolver.ErrorBubble(ctx)
@@ -305,6 +384,12 @@ func (r *stubQuery) WrappedStruct(ctx context.Context) (*WrappedStruct, error) {
 func (r *stubQuery) WrappedScalar(ctx context.Context) (WrappedScalar, error) {
 	return r.QueryResolver.WrappedScalar(ctx)
 }
+func (r *stubQuery) WrappedMap(ctx context.Context) (WrappedMap, error) {
+	return r.QueryResolver.WrappedMap(ctx)
+}
+func (r *stubQuery) WrappedSlice(ctx context.Context) (WrappedSlice, error) {
+	return r.QueryResolver.WrappedSlice(ctx)
+}
 
 type stubSubscription struct{ *Stub }
 
@@ -314,9 +399,36 @@ func (r *stubSubscription) Updated(ctx context.Context) (<-chan string, error) {
 func (r *stubSubscription) InitPayload(ctx context.Context) (<-chan string, error) {
 	return r.SubscriptionResolver.InitPayload(ctx)
 }
+func (r *stubSubscription) DirectiveArg(ctx context.Context, arg string) (<-chan *string, error) {
+	return r.SubscriptionResolver.DirectiveArg(ctx, arg)
+}
+func (r *stubSubscription) DirectiveNullableArg(ctx context.Context, arg *int, arg2 *int, arg3 *string) (<-chan *string, error) {
+	return r.SubscriptionResolver.DirectiveNullableArg(ctx, arg, arg2, arg3)
+}
+func (r *stubSubscription) DirectiveDouble(ctx context.Context) (<-chan *string, error) {
+	return r.SubscriptionResolver.DirectiveDouble(ctx)
+}
+func (r *stubSubscription) DirectiveUnimplemented(ctx context.Context) (<-chan *string, error) {
+	return r.SubscriptionResolver.DirectiveUnimplemented(ctx)
+}
+func (r *stubSubscription) Issue896b(ctx context.Context) (<-chan []*CheckIssue896, error) {
+	return r.SubscriptionResolver.Issue896b(ctx)
+}
 
 type stubUser struct{ *Stub }
 
 func (r *stubUser) Friends(ctx context.Context, obj *User) ([]*User, error) {
 	return r.UserResolver.Friends(ctx, obj)
+}
+
+type stubWrappedMap struct{ *Stub }
+
+func (r *stubWrappedMap) Get(ctx context.Context, obj WrappedMap, key string) (string, error) {
+	return r.WrappedMapResolver.Get(ctx, obj, key)
+}
+
+type stubWrappedSlice struct{ *Stub }
+
+func (r *stubWrappedSlice) Get(ctx context.Context, obj WrappedSlice, idx int) (string, error) {
+	return r.WrappedSliceResolver.Get(ctx, obj, idx)
 }

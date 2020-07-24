@@ -7,49 +7,43 @@ import (
 
 	"github.com/99designs/gqlgen/client"
 	"github.com/99designs/gqlgen/graphql"
-	"github.com/99designs/gqlgen/handler"
+	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDirectives(t *testing.T) {
 	resolvers := &Stub{}
+	ok := "Ok"
 	resolvers.QueryResolver.DirectiveArg = func(ctx context.Context, arg string) (i *string, e error) {
-		s := "Ok"
-		return &s, nil
+		return &ok, nil
 	}
 
 	resolvers.QueryResolver.DirectiveInput = func(ctx context.Context, arg InputDirectives) (i *string, e error) {
-		s := "Ok"
-		return &s, nil
+		return &ok, nil
 	}
 
 	resolvers.QueryResolver.DirectiveInputNullable = func(ctx context.Context, arg *InputDirectives) (i *string, e error) {
-		s := "Ok"
-		return &s, nil
+		return &ok, nil
 	}
 
 	resolvers.QueryResolver.DirectiveNullableArg = func(ctx context.Context, arg *int, arg2 *int, arg3 *string) (*string, error) {
-		s := "Ok"
-		return &s, nil
+		return &ok, nil
 	}
 
 	resolvers.QueryResolver.DirectiveInputType = func(ctx context.Context, arg InnerInput) (i *string, e error) {
-		s := "Ok"
-		return &s, nil
+		return &ok, nil
 	}
 
 	resolvers.QueryResolver.DirectiveObject = func(ctx context.Context) (*ObjectDirectives, error) {
-		s := "Ok"
 		return &ObjectDirectives{
-			Text:         s,
-			NullableText: &s,
+			Text:         ok,
+			NullableText: &ok,
 		}, nil
 	}
 
 	resolvers.QueryResolver.DirectiveObjectWithCustomGoModel = func(ctx context.Context) (*ObjectDirectivesWithCustomGoModel, error) {
-		s := "Ok"
 		return &ObjectDirectivesWithCustomGoModel{
-			NullableText: s,
+			NullableText: ok,
 		}, nil
 	}
 
@@ -62,104 +56,131 @@ func TestDirectives(t *testing.T) {
 	}
 
 	resolvers.QueryResolver.DirectiveDouble = func(ctx context.Context) (*string, error) {
-		s := "Ok"
-		return &s, nil
+		return &ok, nil
 	}
 
 	resolvers.QueryResolver.DirectiveUnimplemented = func(ctx context.Context) (*string, error) {
-		s := "Ok"
-		return &s, nil
+		return &ok, nil
 	}
 
-	srv :=
-		handler.GraphQL(
-			NewExecutableSchema(Config{
-				Resolvers: resolvers,
-				Directives: DirectiveRoot{
-					Length: func(ctx context.Context, obj interface{}, next graphql.Resolver, min int, max *int, message *string) (interface{}, error) {
-						e := func(msg string) error {
-							if message == nil {
-								return fmt.Errorf(msg)
-							}
-							return fmt.Errorf(*message)
-						}
-						res, err := next(ctx)
-						if err != nil {
-							return nil, err
-						}
+	okchan := func() (<-chan *string, error) {
+		res := make(chan *string, 1)
+		res <- &ok
+		close(res)
+		return res, nil
+	}
 
-						s := res.(string)
-						if len(s) < min {
-							return nil, e("too short")
-						}
-						if max != nil && len(s) > *max {
-							return nil, e("too long")
-						}
-						return res, nil
-					},
-					Range: func(ctx context.Context, obj interface{}, next graphql.Resolver, min *int, max *int) (interface{}, error) {
-						res, err := next(ctx)
-						if err != nil {
-							return nil, err
-						}
+	resolvers.SubscriptionResolver.DirectiveArg = func(ctx context.Context, arg string) (strings <-chan *string, e error) {
+		return okchan()
+	}
 
-						switch res := res.(type) {
-						case int:
-							if min != nil && res < *min {
-								return nil, fmt.Errorf("too small")
-							}
-							if max != nil && res > *max {
-								return nil, fmt.Errorf("too large")
-							}
-							return next(ctx)
+	resolvers.SubscriptionResolver.DirectiveNullableArg = func(ctx context.Context, arg *int, arg2 *int, arg3 *string) (strings <-chan *string, e error) {
+		return okchan()
+	}
 
-						case int64:
-							if min != nil && int(res) < *min {
-								return nil, fmt.Errorf("too small")
-							}
-							if max != nil && int(res) > *max {
-								return nil, fmt.Errorf("too large")
-							}
-							return next(ctx)
+	resolvers.SubscriptionResolver.DirectiveDouble = func(ctx context.Context) (strings <-chan *string, e error) {
+		return okchan()
+	}
 
-						case *int:
-							if min != nil && *res < *min {
-								return nil, fmt.Errorf("too small")
-							}
-							if max != nil && *res > *max {
-								return nil, fmt.Errorf("too large")
-							}
-							return next(ctx)
-						}
-						return nil, fmt.Errorf("unsupported type %T", res)
-					},
-					Custom: func(ctx context.Context, obj interface{}, next graphql.Resolver) (interface{}, error) {
-						return next(ctx)
-					},
-					Logged: func(ctx context.Context, obj interface{}, next graphql.Resolver, id string) (interface{}, error) {
-						return next(context.WithValue(ctx, "request_id", &id))
-					},
-					ToNull: func(ctx context.Context, obj interface{}, next graphql.Resolver) (interface{}, error) {
-						return nil, nil
-					},
-					Directive1: func(ctx context.Context, obj interface{}, next graphql.Resolver) (res interface{}, err error) {
-						return next(ctx)
-					},
-					Directive2: func(ctx context.Context, obj interface{}, next graphql.Resolver) (res interface{}, err error) {
-						return next(ctx)
-					},
-					Unimplemented: nil,
-				},
-			}),
-			handler.ResolverMiddleware(func(ctx context.Context, next graphql.Resolver) (res interface{}, err error) {
-				path, _ := ctx.Value("path").([]int)
-				return next(context.WithValue(ctx, "path", append(path, 1)))
-			}),
-			handler.ResolverMiddleware(func(ctx context.Context, next graphql.Resolver) (res interface{}, err error) {
-				path, _ := ctx.Value("path").([]int)
-				return next(context.WithValue(ctx, "path", append(path, 2)))
-			}),
-		)
+	resolvers.SubscriptionResolver.DirectiveUnimplemented = func(ctx context.Context) (<-chan *string, error) {
+		return okchan()
+	}
+	srv := handler.NewDefaultServer(NewExecutableSchema(Config{
+		Resolvers: resolvers,
+		Directives: DirectiveRoot{
+			Length: func(ctx context.Context, obj interface{}, next graphql.Resolver, min int, max *int, message *string) (interface{}, error) {
+				e := func(msg string) error {
+					if message == nil {
+						return fmt.Errorf(msg)
+					}
+					return fmt.Errorf(*message)
+				}
+				res, err := next(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				s := res.(string)
+				if len(s) < min {
+					return nil, e("too short")
+				}
+				if max != nil && len(s) > *max {
+					return nil, e("too long")
+				}
+				return res, nil
+			},
+			Range: func(ctx context.Context, obj interface{}, next graphql.Resolver, min *int, max *int) (interface{}, error) {
+				res, err := next(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				switch res := res.(type) {
+				case int:
+					if min != nil && res < *min {
+						return nil, fmt.Errorf("too small")
+					}
+					if max != nil && res > *max {
+						return nil, fmt.Errorf("too large")
+					}
+					return next(ctx)
+
+				case int64:
+					if min != nil && int(res) < *min {
+						return nil, fmt.Errorf("too small")
+					}
+					if max != nil && int(res) > *max {
+						return nil, fmt.Errorf("too large")
+					}
+					return next(ctx)
+
+				case *int:
+					if min != nil && *res < *min {
+						return nil, fmt.Errorf("too small")
+					}
+					if max != nil && *res > *max {
+						return nil, fmt.Errorf("too large")
+					}
+					return next(ctx)
+				}
+				return nil, fmt.Errorf("unsupported type %T", res)
+			},
+			Custom: func(ctx context.Context, obj interface{}, next graphql.Resolver) (interface{}, error) {
+				return next(ctx)
+			},
+			Logged: func(ctx context.Context, obj interface{}, next graphql.Resolver, id string) (interface{}, error) {
+				return next(context.WithValue(ctx, "request_id", &id))
+			},
+			ToNull: func(ctx context.Context, obj interface{}, next graphql.Resolver) (interface{}, error) {
+				return nil, nil
+			},
+			Directive1: func(ctx context.Context, obj interface{}, next graphql.Resolver) (res interface{}, err error) {
+				return next(ctx)
+			},
+			Directive2: func(ctx context.Context, obj interface{}, next graphql.Resolver) (res interface{}, err error) {
+				return next(ctx)
+			},
+			Order: func(ctx context.Context, obj interface{}, next graphql.Resolver, location string) (res interface{}, err error) {
+				order := []string{location}
+				res, err = next(ctx)
+				od := res.(*ObjectDirectives)
+				od.Order = append(order, od.Order...)
+				return od, err
+			},
+			Unimplemented: nil,
+		},
+	}))
+
+	srv.AroundFields(func(ctx context.Context, next graphql.Resolver) (res interface{}, err error) {
+		path, _ := ctx.Value("path").([]int)
+		return next(context.WithValue(ctx, "path", append(path, 1)))
+	})
+
+	srv.AroundFields(func(ctx context.Context, next graphql.Resolver) (res interface{}, err error) {
+		path, _ := ctx.Value("path").([]int)
+		return next(context.WithValue(ctx, "path", append(path, 2)))
+	})
+
 	c := client.New(srv)
 
 	t.Run("arg directives", func(t *testing.T) {
@@ -347,14 +368,17 @@ func TestDirectives(t *testing.T) {
 				DirectiveObject *struct {
 					Text         string
 					NullableText *string
+					Order        []string
 				}
 			}
 
-			err := c.Post(`query { directiveObject{ text nullableText } }`, &resp)
+			err := c.Post(`query { directiveObject{ text nullableText order} }`, &resp)
 
 			require.Nil(t, err)
 			require.Equal(t, "Ok", resp.DirectiveObject.Text)
 			require.True(t, resp.DirectiveObject.NullableText == nil)
+			require.Equal(t, "Query_field", resp.DirectiveObject.Order[0])
+			require.Equal(t, "ObjectDirectives_object", resp.DirectiveObject.Order[1])
 		})
 		t.Run("when directive returns nil & custom go field is not nilable", func(t *testing.T) {
 			var resp struct {
@@ -367,6 +391,61 @@ func TestDirectives(t *testing.T) {
 
 			require.Nil(t, err)
 			require.True(t, resp.DirectiveObjectWithCustomGoModel.NullableText == nil)
+		})
+	})
+
+	t.Run("Subscription directives", func(t *testing.T) {
+		t.Run("arg directives", func(t *testing.T) {
+			t.Run("when function errors on directives", func(t *testing.T) {
+				var resp struct {
+					DirectiveArg *string
+				}
+
+				err := c.WebsocketOnce(`subscription { directiveArg(arg: "") }`, &resp)
+
+				require.EqualError(t, err, `[{"message":"invalid length","path":["directiveArg"]}]`)
+				require.Nil(t, resp.DirectiveArg)
+			})
+			t.Run("when function errors on nullable arg directives", func(t *testing.T) {
+				var resp struct {
+					DirectiveNullableArg *string
+				}
+
+				err := c.WebsocketOnce(`subscription { directiveNullableArg(arg: -100) }`, &resp)
+
+				require.EqualError(t, err, `[{"message":"too small","path":["directiveNullableArg"]}]`)
+				require.Nil(t, resp.DirectiveNullableArg)
+			})
+			t.Run("when function success on nullable arg directives", func(t *testing.T) {
+				var resp struct {
+					DirectiveNullableArg *string
+				}
+
+				err := c.WebsocketOnce(`subscription { directiveNullableArg }`, &resp)
+
+				require.Nil(t, err)
+				require.Equal(t, "Ok", *resp.DirectiveNullableArg)
+			})
+			t.Run("when function success on valid nullable arg directives", func(t *testing.T) {
+				var resp struct {
+					DirectiveNullableArg *string
+				}
+
+				err := c.WebsocketOnce(`subscription { directiveNullableArg(arg: 1) }`, &resp)
+
+				require.Nil(t, err)
+				require.Equal(t, "Ok", *resp.DirectiveNullableArg)
+			})
+			t.Run("when function success", func(t *testing.T) {
+				var resp struct {
+					DirectiveArg *string
+				}
+
+				err := c.WebsocketOnce(`subscription { directiveArg(arg: "test") }`, &resp)
+
+				require.Nil(t, err)
+				require.Equal(t, "Ok", *resp.DirectiveArg)
+			})
 		})
 	})
 }
